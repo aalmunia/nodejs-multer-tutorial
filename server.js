@@ -71,11 +71,18 @@ var oStorageNormal = multer.diskStorage({
         if (file.hasOwnProperty('originalname')) {
             callback(null, file.originalname);
         } else {
-            callback('El fichero está vacío, corrupto o no es válido');
+            callback('El fichero con nombre de campo ' + file.fieldname + ' está vacío, corrupto o no es válido');
         }
     }
 });
 
+/**
+ * Instanciamos un objeto de tipo multer.diskStorage
+ * A diferencia de los métodos 'destination' y 'filename' del 
+ * anterior objeto configurado para subir ficheros, estamos
+ * definiendo que cuando se use este tipo de almacenamiento solo 
+ * se permitirán subir imágenes.
+ */
 var oStorageImages = multer.diskStorage({
     destination: function(req, file, callback) {
         callback(null, sFolderToSaveInto);
@@ -85,27 +92,74 @@ var oStorageImages = multer.diskStorage({
             if (oTool.isAcceptedMimeType(file)) {
                 callback(null, file.originalname);
             } else {
-                callback('El tipo MIME es incorrecto.');
+                callback('El tipo MIME del fichero con nombre ' + file.originalname + ' es incorrecto.');
             }
         } else {
-            callback('El fichero está vacío, corrupto o no es válido');
+            callback('El fichero con nombre de campo ' + file.fieldname + ' está vacío, corrupto o no es válido');
         }
     }
 });
 
 /**
- * Instanciamos un objeto de almacenamiento Multer, con la 
- * configuración de oStorageNormal, para un solo fichero, con
- * nombre de campo 'new_file'
- **/
+ * Objeto de multer que permite subir un fichero. Debe proveerse a través de un campo de formulario
+ * con nombre file_to_upload. Puede ser de cualquier tipo, acorde a la configuración de oStorageNormal
+ */
 var oUploadOneFile = multer({ storage: oStorageNormal }).single('file_to_upload');
-var oUploadAny = multer({ storage: oStorageNormal });
 
+/**
+ * Objeto de multer que permie subir múltiples ficheros. No se usa como componente de middleware, 
+ * sino que se invoca, pasando un callback para la resolución de la subida de los archivos
+ */
+var oUploadSeveralFiles = multer({ storage: oStorageNormal }).any();
+
+/**
+ * Objeto de multer que permite subir una imagen. Debe proveerse a través de un campo de formulario,
+ * con nombre 'image_to_upload'.
+ */
 var oUploadOneImage = multer({ storage: oStorageImages }).single('image_to_upload');
-var oUploadAnyImages = multer({ storage: oStorageImages });
+var oUploadSeveralImages = multer({ storage: oStorageImages }).any();
 
+/**
+ * Función que gestiona la subida de un archivo. Es el callback de las rutas en las que 
+ * se usa un componente de middleware para subir un solo fichero
+ */
+function handleUploadOneFile(oRequest, oResponse) {
+    var oFile = oRequest.file;
+    if(oFile !== undefined) {
+        var sFileName = oFile.originalname;
+        oTool.writeJSONResponse(oResponse, {
+            error: false,
+            message: 'Fichero correctamente subido a ' + sFolderToSaveInto + sFileName
+        });
+    }
+}
 
-oApp.post('/uploadFile', function(oRequest, oResponse) {        
+/**
+ * Función que gestiona la subida de múltiples archivos. Es el callback de las rutas en las que se 
+ * usa un componente de middleware para subir varios ficheros
+ */
+function handleUploadMultipleFiles(oRequest, oResponse) {
+    var aFiles = oRequest.files;
+    var aFilenames = [];
+    if(aFiles !== undefined) {
+        var iFiles = aFiles.length;
+        for(var i = 0; i < iFiles; i++) {
+            aFilenames[i] = sFolderToSaveInto + aFiles[i].originalname;
+        }
+        oTool.writeJSONResponse(oResponse, {
+            error: false,
+            filesUploaded: aFilenames
+        });
+    }
+}
+
+/**
+ * Subimos el fichero realizando una llamada a oUploadOneFile
+ */
+oApp.post('/uploadFile', function(oRequest, oResponse) {
+    // console.log(oUpl)
+    console.log(oTool.extractObjectProperties(oUploadOneFile));
+    console.log(oUploadOneFile.toString());
     oUploadOneFile(oRequest, oResponse, function(oError) {
         if (oError) {
             oTool.writeJSONResponse(oResponse, {
@@ -120,19 +174,14 @@ oApp.post('/uploadFile', function(oRequest, oResponse) {
     });
 });
 
+/**
+ * Subimos el fichero usando oUploadOneFile como componente de middleware
+ */
+oApp.post('/uploadFile_2', oUploadOneFile, handleUploadOneFile);
 
-oApp.post('/uploadFile_2', oUploadOneFile, function(oRequest, oResponse) {
-    var oFile = oRequest.file;
-    if(oFile !== undefined) {
-        var sFileName = oFile.originalname;
-        oTool.writeJSONResponse(oResponse, {
-            error: false,
-            message: 'Fichero correctamente subido a ' + sFolderToSaveInto + sFileName
-        });
-    }
-});
-
-
+/**
+ * Subimos la imagen realizando una llamada a oUploadOneImage
+ */
 oApp.post('/uploadImage', function(oRequest, oResponse) {    
      oUploadOneImage(oRequest, oResponse, function(oError) {
          if(oError) {
@@ -148,27 +197,53 @@ oApp.post('/uploadImage', function(oRequest, oResponse) {
      });
 });
 
+/**
+ * Subimos el archivo usando oUploadOneImage como componente de middleware
+ */
+oApp.post('/uploadImage_2', oUploadOneImage, handleUploadOneFile);
 
-oApp.post('/uploadImage_2', oUploadOneImage, function(oRequest, oResponse) {
-    
-});
-
+/**
+ * Subimos los ficheros realizando una llamada a oUploadSeveralFiles
+ */
 oApp.post('/uploadSeveralFiles', function(oRequest, oResponse) {
-    
+    oUploadSeveralFiles(oRequest, oResponse, function(oError) {
+        if(oError) {
+            oTool.writeJSONResponse(oResponse, {
+                error: true,
+                error_object: oError                
+            });
+        } else {
+            oTool.writeJSONResponse(oResponse, {
+                error: false                
+            });          
+        }
+    });  
 });
 
-oApp.post('/uploadSeveralFiles_2', oUploadAny.any(), function(oRequest, oResponse) {
-    
-});
+/**
+ * Subimos los ficheros usando oUploadAny como componente de middleware
+ */
+oApp.post('/uploadSeveralFiles_2', oUploadSeveralFiles, handleUploadMultipleFiles);
 
 oApp.post('/uploadSeveralImages', function(oRequest, oResponse) {
-    
+    oUploadSeveralImages(oRequest, oResponse, function(oError) {
+        if(oError) {
+            oTool.writeJSONResponse(oResponse, {
+                error: true,
+                error_object: oError
+            });            
+        } else {
+            oTool.writeJSONResponse(oResponse, {
+                error: false                
+            });
+        }     
+    });  
 });
 
-oApp.post('/uploadSeveralImages_2', oUploadAnyImages.any(), function(oRequest, oResponse) {
-    
-});
-
+/**
+ * Subimos las imáganes usando oUploadAnyImages como componente de middleware
+ */
+oApp.post('/uploadSeveralImages_2', oUploadSeveralImages, handleUploadMultipleFiles);
 
 /**
  * Iniciamos la aplicación en el puerto 9021, al iniciarse, nos
